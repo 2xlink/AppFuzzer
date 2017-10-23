@@ -10,7 +10,7 @@ This repository contains the AppFuzzer app and a small wrapper script which hand
 
 ### Using the release (recommended way)
 You will need java (I used openjdk version 1.8.0_131) and the Android SDK.
-1. Download and extract the zip file from https://github.com/2xlink/AndroidUITesting/releases
+1. Download and extract the zip file from https://github.com/2xlink/AppFuzzer-public/releases
 2. If you use an emulator, start it with the flags `-writable-system -netdelay none -netspeed full -avd`. Add `-no-skin -no-audio -no-window` if you want headless mode. If you use a real device, just connect it to your PC.
 3. Set your ANDROID_HOME variable (points to Android Sdk) and execute the attached shell script: `./installSystem_rawAPK.sh`. This will install AppFuzzer on your emulator.
 4. Put the APKs to test into `test-apks/`
