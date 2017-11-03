@@ -388,7 +388,7 @@ do
         # We check whether the target threw an exception or not
         # For this we check occurences of a stacktrace in the logcat
         set +e
-        egrep ".*System.err.*$package_name" logs/"${package_name}"*_logcat > /dev/null
+        egrep -i "AndroidRuntime.*:.*exception" logs/"${package_name}"*_logcat > /dev/null
         res=$?
         set -e
         if [[ res -ne 0 ]]; then
