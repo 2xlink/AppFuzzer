@@ -286,7 +286,7 @@ do
         fi
     fi
 
-    info " ... Fuzzing ${package_name} (${max_reps} repititions, ${max_sets} sets)..."
+    info " ... Fuzzing ${package_name} (${max_reps} steps, ${max_sets} tests)..."
     ${ADB_SH} "am start -n \"${appfuzzer_packagename}/${appfuzzer_packagename}.$MAIN_ACTIVITY\" \
     -a android.intent.action.MAIN \
     -c android.intent.category.LAUNCHER \
@@ -355,11 +355,11 @@ do
     fi
     res=$($ADB_SH_BB "test -f ${dir_package_name_failed}; echo \$?" | sed 's/\r//g')
     if [[ res -eq 0 ]]; then 
-        info "Exited correctly, but there was a problem starting the app."
+        debug "Exited correctly, but there was a problem starting the app."
         RESULT_CODE=1
     fi
     if [[ $counter -ge $threshold ]]; then
-        info "Timeout reached." 
+        debug "Timeout reached." 
         RESULT_CODE=2
     fi
     ${ADB_SH_BB} "killall app_process X >/dev/null" || true
