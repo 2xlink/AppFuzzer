@@ -19,15 +19,15 @@ RESET_STORAGE=1     # Specify if the sd card should be reset between apps. Can b
 
 username="MyUsername1"
 password="MyPassword1"
-max_reps=10
-max_sets=4
+max_reps=100
+max_sets=2
 launcher_package_name=""                # If left blank, will be determined automatically
 url="https://dud.inf.tu-dresden.de"
 timeout=200                             # Time in ms until the Timer kicks in
 text_input_chance=0.5
 checkbox_tick_chance=0.5
 radiobutton_tick_chance=0.3
-scroll_chance=0.25
+scroll_chance=0.75
 OAuth_search_chance=0.5
 backbutton_press_chance=0.1
 
