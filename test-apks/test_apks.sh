@@ -13,8 +13,21 @@
 
 set -euo pipefail
 
-# ****** CHANGE THIS
-export ANDROID_HOME="/opt/Android/Sdk"
+# Set default if ANDROID_HOME is unset
+set +u
+if [ -z "${ANDROID_HOME}" ];
+then
+	export ANDROID_HOME="/opt/Android/Sdk"
+	echo "WARNING: ANDROID_HOME unset, using default (${ANDROID_HOME})"
+fi
+set -e
+
+if [ ! -d "${ANDROID_HOME}" ];
+then
+	echo "ERROR: Your ANDROID_HOME does not exist (${ANDROID_HOME})"
+	exit 1
+fi
+
 export PATH=${PATH}:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools/bin
 
 appfuzzer_packagename="com.example.link.appfuzzer"
