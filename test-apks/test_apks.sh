@@ -13,7 +13,6 @@
 
 appfuzzer_packagename="com.example.link.appfuzzer"
 MAIN_ACTIVITY="MainActivity"
-DEBUG=1             # Debug level, can be 0 (no debug output) or 1.
 PULL_LOGS=true      # If true, pull logs from device to logs/.
 threshold=180       # Time in seconds until the appfuzzer starts with the next app.
 RESET_STORAGE=1     # Specify if the sd card should be reset between apps. Can be 0 (disabled) or 1 (enabled).
@@ -39,10 +38,11 @@ ADB_SH="adb shell su root"
 # DO NOT CHANGE ANYTHING BELOW THIS LINE
 #########################################################################################################
 
-if [ -z "${APK_DIR}" ];
-then
-    APK_DIR=apks
-fi
+APK_DIR=${APK_DIR:-apks}
+DEBUG=${DEBUG:-0}
+ANDROID_HOME=${ANDROID_HOME:-/opt/Android/Sdk}
+
+export ANDROID_HOME
 
 if [ ! -d "${APK_DIR}" ];
 then
@@ -52,6 +52,14 @@ fi
 now()
 {
     date "+%Y/%m/%d-%H:%M.%S"
+}
+
+debug()
+{
+    if [ -n "${DEBUG}" -a "${DEBUG}" -ne "0" ];
+    then
+        echo "[$(now)] DEBUG: $*"
+    fi
 }
 
 info()
@@ -81,15 +89,6 @@ set -euo pipefail
 
 # Prevent *.apk from returning '*.apk' when directory is empty
 shopt -s nullglob
-
-# Set default if ANDROID_HOME is unset
-set +u
-if [ -z "${ANDROID_HOME}" ];
-then
-	export ANDROID_HOME="/opt/Android/Sdk"
-	warn "ANDROID_HOME unset, using default [${ANDROID_HOME}]"
-fi
-set -e
 
 if [ ! -d "${ANDROID_HOME}" ];
 then
@@ -152,29 +151,29 @@ if [[ -z $ARCHITECTURE ]]; then     # If $ARCHITECTURE is not set, then determin
     fileinfo=`adb pull /system/lib/libc.so /tmp/AppFuzzer/libc.so && file /tmp/AppFuzzer/libc.so`
     if [[ $fileinfo == *"ARM"* ]]; then
         # It's an ARM arch
-        adb push busybox/busybox-armv6l /data/local/tmp/busybox
+        adb push busybox/busybox-armv6l /data/local/tmp/busybox > /dev/null
     elif [[ $fileinfo == *"Intel"* ]]; then
         # It's an Intel arch
-        adb push busybox/busybox-i686 /data/local/tmp/busybox
+        adb push busybox/busybox-i686 /data/local/tmp/busybox > /dev/null
     else
         err "Could not determine architecture! Please add the command line parameter -A if you use an ARM architecture or -X if you use a x86 architecture."
     fi
 elif [[ $ARCHITECTURE -eq "ARM" ]]; then
-    adb push busybox/busybox-armv6l /data/local/tmp/busybox
+    adb push busybox/busybox-armv6l /data/local/tmp/busybox > /dev/null
 elif [[ $ARCHITECTURE -eq "X86" ]]; then
-    adb push busybox/busybox-i686 /data/local/tmp/busybox
+    adb push busybox/busybox-i686 /data/local/tmp/busybox > /dev/null
 else
     err "Bad ARCHITECTURE, it is $ARCHITECTURE."
 fi
 
 
-$ADB_SH chmod 766 /data/local/tmp/busybox
+$ADB_SH chmod 766 /data/local/tmp/busybox > /dev/null
 ADB_SH_BB="$ADB_SH /data/local/tmp/busybox"
 
 # Get the launcher package name
 if [[ -z $launcher_package_name ]]; then
     launcher_package_name=`$ADB_SH pm list packages | grep launcher | cut -d ":" -f 2 | sed 's/\r//g'` # sed removes the carriage return
-    info "launcher_package_name is now ${launcher_package_name}."
+    debug "launcher_package_name: ${launcher_package_name}."
 fi
 
 # some internal variables
@@ -197,12 +196,12 @@ if [[ $RESET_STORAGE -eq 1 ]]; then
     res_sdcardDir=$($ADB_SH_BB "test -d /storage/emulated/0/; echo \$?" | sed 's/\r//g')
     if [[ $res_sdcardDir -eq 0 ]]; then
         sdcardDir="/storage/emulated/0/"
-        info "SD card dir found: $sdcardDir"
+        debug "SD card dir found: $sdcardDir"
     else
         res_sdcardDir=$($ADB_SH_BB "test -d /storage/emulated/legacy/; echo \$?" | sed 's/\r//g')
         if [[ $res_sdcardDir -eq 0 ]]; then
             sdcardDir="/storage/emulated/legacy/"
-            info "SD card dir found! It is $sdcardDir."
+            debug "SD card dir found! It is $sdcardDir."
         else
             warn "Could not determine SD card directory! Emptying the SD card between runs will be disabled."
         fi
@@ -247,49 +246,47 @@ ${ADB_SH_BB} "rm -rf ${appfuzzer_basedir}*"
 ${ADB_SH_BB} "rm -rf ${appfuzzer_basedir}.*"
 #${ADB_SH_BB} "chmod 777 -R ${appfuzzer_basedir}"
 
+
+
 for apk in ${APK_DIR}/*.apk;
 do
     package_name=`aapt dump badging "$apk" | grep "package: name" | cut -d"'" -f 2` || true
     dir_package_name_done="${appfuzzer_basedir}${package_name}.done"
     dir_package_name_failed="${appfuzzer_basedir}${package_name}.failed"
-    if [[ DEBUG -eq 1 ]];
-    then
-        info "Packagename: $package_name";
-    fi
+
+    debug "Packagename: $package_name";
 
     if [[ $RESUME -eq 1 ]]; then
-        echo "Checking if $apk was processed already …"
+        info "Checking if $apk was processed already …"
         result=`find logs -name "*"$package_name"*"`
         if [[ -n $result ]]; then 
-            echo "Found logfiles for this apk. Skipping …"
+            info "Found logfiles for this apk. Skipping …"
             continue
         fi
-        echo "Nothing found."
+        info "Nothing found."
     fi
 
-    echo "Installing \"$apk\""
-    if [[ DEBUG -eq 1 ]]; then echo "Checking if package is already installed ..."; fi
+    info "Installing $apk"
+    debug "Checking if package is already installed"
         
     if [[ `${ADB_SH} pm list packages | grep ${package_name} | wc -l` -eq 0 ]]; then
-        if [[ DEBUG -eq 1 ]]; then echo "Nothing found, installing package ..."; fi
-        res_adbInstall=$(adb install -r "$apk" 2>&1 >/dev/null) || true
+        debug "Not found, installing ${package_name}"
+        res_adbInstall=$(adb install -r "$apk") || true
 
         if [[ $res_adbInstall == *"INSTALL_FAILED_NO_MATCHING_ABIS"* ]]; then
-            echo "Could not install $apk due to unsupported architecture, proceeding with next." 
+            info "Could not install $apk due to unsupported architecture, proceeding with next." 
             failed_to_install=$((failed_to_install + 1)) 
-            echo "Failed_to_install: $failed_to_install" 
             echo "$package_name" >> logs/packagelist_failed_to_install_unsupported_arch
             continue  
         elif [[ $res_adbInstall != *"Success"* ]]; then
-            echo "Could not install $apk due to an unknown error, proceeding with next." 
+            info "Unknown error while installing $apk: ${res_adbInstall}" 
             failed_to_install=$((failed_to_install + 1)) 
-            echo "Failed_to_install: $failed_to_install" 
             echo "$package_name" >> logs/packagelist_failed_to_install_unknown_error
             continue  
         fi
     fi
 
-    echo "Starting AppFuzzer"
+    info " ... Fuzzing ${package_name} (${max_reps} repititions, ${max_sets} sets)..."
     ${ADB_SH} "am start -n \"${appfuzzer_packagename}/${appfuzzer_packagename}.$MAIN_ACTIVITY\" \
     -a android.intent.action.MAIN \
     -c android.intent.category.LAUNCHER \
@@ -306,17 +303,17 @@ do
     --ef radiobutton_tick_chance $radiobutton_tick_chance \
     --ef scroll_chance $scroll_chance \
     --ef OAuth_search_chance $OAuth_search_chance \
-    --ef backbutton_press_chance $backbutton_press_chance"
+    --ef backbutton_press_chance $backbutton_press_chance" > /dev/null
 
     counter=0
     result=0
     check_count=3
     check_timeout="0"`echo 1.0/$check_count | bc -l`
-    if [[ DEBUG -eq 1 ]]; then echo "check_timeout: $check_timeout"; fi
+    debug "check_timeout: $check_timeout"
     # Occasionally adb shell test falsely returns 1, therefore we check $check_count times whether it is 1 just to be sure
     while [[ $result -lt $check_count ]]; do
         # sleep 1
-        if [[ DEBUG -eq 1 ]]; then echo "Waiting for ${dir_package_name_done} or ${dir_package_name_failed}. $counter / $threshold"; fi
+        debug "$counter/$threshold: Polling result"
         ((counter=counter+1))
         if [[ $((counter%5)) -eq 0 ]]; then
             for temp in `seq 1 1 $check_count`; do
@@ -331,19 +328,19 @@ do
                     result=$((result + 1))
                 fi
                 sleep $check_timeout
-                if [[ DEBUG -eq 1 ]]; then echo "Result:" $result; fi
+                debug "Result: $result"
             done
         else
             sleep 1
         fi
-        ${ADB_SH_BB} "killall app_process" 2> /dev/null || true  # Sometimes busybox already quits on its own
+        ${ADB_SH_BB} "killall app_process" > /dev/null || true  # Sometimes busybox already quits on its own
     done
 
     # Stop the app and uninstall the target app
-    if [[ DEBUG -eq 1 ]]; then echo "Stopping AppFuzzer."; fi
+    debug "Stopping AppFuzzer"
     ${ADB_SH} "am force-stop ${appfuzzer_packagename}" || true      # Might already be dead
-    echo "Uninstalling $package_name"
-    adb uninstall ${package_name}
+    info " ... Uninstalling $package_name"
+    adb uninstall ${package_name} > /dev/null
 
     # We check how we finished, and set RESULT_CODE accordingly
     # RESULT_CODE = 
@@ -353,35 +350,34 @@ do
 
     res=$($ADB_SH_BB "test -f ${dir_package_name_done}; echo \$?" | sed 's/\r//g')
     if [[ res -eq 0 ]]; then 
-        echo "Done."
+        debug "Done."
         RESULT_CODE=0
     fi
     res=$($ADB_SH_BB "test -f ${dir_package_name_failed}; echo \$?" | sed 's/\r//g')
     if [[ res -eq 0 ]]; then 
-        echo "Exited correctly, but there was a problem starting the app."
+        info "Exited correctly, but there was a problem starting the app."
         RESULT_CODE=1
     fi
     if [[ $counter -ge $threshold ]]; then
-        echo "Timeout reached." 
+        info "Timeout reached." 
         RESULT_CODE=2
     fi
-    ${ADB_SH_BB} "killall app_process" 2> /dev/null || true
-    ${ADB_SH} "rm ${dir_package_name_done}" || true
-    ${ADB_SH} "rm ${dir_package_name_failed}" || true
-    
+    ${ADB_SH_BB} "killall app_process X >/dev/null" || true
+    ${ADB_SH} "rm -f ${dir_package_name_done} >/dev/null" || true
+    ${ADB_SH} "rm -f ${dir_package_name_failed} >/dev/null" || true
 
     # Pull logs
     if [ "$PULL_LOGS" = true ]; then
         for i in `seq 0 1 "$PULL_LOGS_SETS"`; do
             ${ADB_SH} cat ${appfuzzer_basedir}${package_name}${i} > logs/${package_name}${i} || true
-            if [[ DEBUG -eq 1 ]]; then echo "Pulled ${appfuzzer_basedir}${package_name}${i}"; fi
-            ${ADB_SH} rm ${appfuzzer_basedir}${package_name}${i} || true
+            debug "Pulled ${appfuzzer_basedir}${package_name}${i}"
+            ${ADB_SH} rm -f ${appfuzzer_basedir}${package_name}${i} || true
 
             ${ADB_SH} cat ${appfuzzer_basedir}${package_name}${i}_logcat > logs/${package_name}${i}_logcat || true
-            if [[ DEBUG -eq 1 ]]; then echo "Pulled ${appfuzzer_basedir}${package_name}${i}_logcat"; fi
-            ${ADB_SH} rm ${appfuzzer_basedir}${package_name}${i}_logcat || true
+            debug "Pulled ${appfuzzer_basedir}${package_name}${i}_logcat"
+            ${ADB_SH} rm -f ${appfuzzer_basedir}${package_name}${i}_logcat || true
         done
-        echo "Logs pulled to logs/"
+        debug "Logs pulled to logs/"
     fi
 
     mkdir -p logs/processed_packages
@@ -397,37 +393,34 @@ do
         set -e
         if [[ res -ne 0 ]]; then
             successful=$((successful + 1)) 
-            echo "This package was successful."
+            info " ... Success: ${package_name}"
             echo "$package_name" >> logs/packagelist_successful 
         else
             successful_crash=$((successful_crash + 1)) 
-            echo "This package was successful, but the app crashed."
+            info " ... Crash: ${package_name}"
             echo "$package_name" >> logs/packagelist_successful_crash 
         fi
     elif [[ $RESULT_CODE -eq 1 ]]; then 
         failed_to_start=$((failed_to_start + 1))
+        info " ... Failed to start: ${package_name}"
         echo "$package_name" >> logs/packagelist_failed_to_start
     elif [[ $RESULT_CODE -eq 2 ]]; then
         failed_timeout=$((failed_timeout + 1))
+        info " ... Timeout: ${package_name}"
         echo "$package_name" >> logs/packagelist_failed_timeout
     else
-        echo "Bad RESULT_CODE! It is $RESULT_CODE."
+        info " ... Bad RESULT_CODE: $RESULT_CODE for ${package_name}"
         exit 1
     fi
 
     # Reset sd card
     if [[ -n $sdcardDir ]]; then
-        info "Resetting SD card."
-        $ADB_SH "rm -rf $sdcardDir/*" || true
+        debug "Resetting SD card."
+        $ADB_SH "rm -rf $sdcardDir/*" >/dev/null || true
     fi
 
     total=$((total + 1))
-    echo "Total apps:                   $total"
-    echo "Successful apps:              $successful"
-    echo "Successful, but crashed apps: $successful_crash"
-    echo "Failed at install apps:       $failed_to_install"
-    echo "Failed at runtime apps:       $failed_to_start"
-    echo "Failed due to timeout apps:   $failed_timeout"
+    info "Total=$total, success=$successful, crashed=$successful_crash, inst_fail=$failed_to_install, run_fail=$failed_to_start, timeout=$failed_timeout"
 
     echo $total > results/total
     echo $successful > results/successful
@@ -437,15 +430,15 @@ do
     echo $failed_timeout > results/failed_timeout
 done
 
-echo "----------------------------------"
-echo "RESULTS"
-echo "----------------------------------"
-echo "Total apps:                   $total"
-echo "Successful apps:              $successful"
-echo "Successful, but crashed apps: $successful_crash"
-echo "Failed at install apps:       $failed_to_install"
-echo "Failed at runtime apps:       $failed_to_start"
-echo "Failed due to timeout apps:   $failed_timeout"
+info "----------------------------------"
+info "RESULTS"
+info "----------------------------------"
+info "Total apps:                   $total"
+info "Successful apps:              $successful"
+info "Successful, but crashed apps: $successful_crash"
+info "Failed at install apps:       $failed_to_install"
+info "Failed at runtime apps:       $failed_to_start"
+info "Failed due to timeout apps:   $failed_timeout"
 
 echo $total > results/total
 echo $successful > results/successful
