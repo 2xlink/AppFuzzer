@@ -41,7 +41,12 @@ ADB_SH="adb shell su root"
 
 if [ -z "${APK_DIR}" ];
 then
-    APK_DIR=apk
+    APK_DIR=apks
+fi
+
+if [ ! -d "${APK_DIR}" ];
+then
+    err "APK_DIR (${APK_DIR}) does not exist"
 fi
 
 now()
