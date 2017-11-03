@@ -11,25 +11,6 @@
 #   wait for AppFuzzer to finish
 #   uninstall app
 
-set -euo pipefail
-
-# Set default if ANDROID_HOME is unset
-set +u
-if [ -z "${ANDROID_HOME}" ];
-then
-	export ANDROID_HOME="/opt/Android/Sdk"
-	echo "WARNING: ANDROID_HOME unset, using default (${ANDROID_HOME})"
-fi
-set -e
-
-if [ ! -d "${ANDROID_HOME}" ];
-then
-	echo "ERROR: Your ANDROID_HOME does not exist (${ANDROID_HOME})"
-	exit 1
-fi
-
-export PATH=${PATH}:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools/bin
-
 appfuzzer_packagename="com.example.link.appfuzzer"
 MAIN_ACTIVITY="MainActivity"
 DEBUG=1             # Debug level, can be 0 (no debug output) or 1.
@@ -54,18 +35,72 @@ backbutton_press_chance=0.1
 # How to execute ADB shell su root
 ADB_SH="adb shell su root"
 
-# ****** DO NOT CHANGE ANYTHING BELOW THIS LINE
+#########################################################################################################
+# DO NOT CHANGE ANYTHING BELOW THIS LINE
+#########################################################################################################
+
+if [ -z "${APK_DIR}" ];
+then
+    APK_DIR=apk
+fi
+
+now()
+{
+    date "+%Y/%m/%d-%H:%M.%S"
+}
+
+info()
+{
+    echo "[$(now)] $*"
+}
+
+warn()
+{
+    echo "[$(now)] WARNING: $*"
+}
+
+err()
+{
+    echo "[$(now)] ERROR: $*"
+    exit 1
+}
+
+usage()
+{
+    echo "Usage: Put your apks to test into the same directory as this script."
+    echo "Optional: Specify architecture with -A (ARM) or -X (x86)."
+    exit 0
+}
+
+set -euo pipefail
+
+# Prevent *.apk from returning '*.apk' when directory is empty
+shopt -s nullglob
+
+# Set default if ANDROID_HOME is unset
+set +u
+if [ -z "${ANDROID_HOME}" ];
+then
+	export ANDROID_HOME="/opt/Android/Sdk"
+	warn "ANDROID_HOME unset, using default [${ANDROID_HOME}]"
+fi
+set -e
+
+if [ ! -d "${ANDROID_HOME}" ];
+then
+	err "Your ANDROID_HOME does not exist [${ANDROID_HOME}]"
+fi
+
+export PATH=${PATH}:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools/bin
 
 # Detect adb devices
 deviceCount=$(adb devices -l | wc -l)
 if [[ $deviceCount -gt 3 ]]; then
-    echo "Detected more then one device! Please disconnect all devices except the one to test or edit ADB_SH to point to your device."
-    exit 1
+    err "Detected more then one device! Please disconnect all devices except the one to test or edit ADB_SH to point to your device."
 fi
 
 if [[ $(adb devices | wc -l) -le 2 ]]; then 
-    echo "Could not find adb device, are you sure it is available?"
-    exit 1
+    err "Could not find adb device, are you sure it is available?"
 fi
 
 # Command line parameters
@@ -85,38 +120,28 @@ key="$1"
 
 case $key in
     -r|--resume)
-    # RESUME=1
-    # RESUME=0
-    # shift # past argument
-    ;;
+        ;;
     -A)
-    ARCHITECTURE="ARM"
-    shift # past argument
-    ;;
+        ARCHITECTURE="ARM"
+        shift # past argument
+        ;;
     -X)
-    # RESUME=1
-    # RESUME=0
-    ARCHITECTURE="X86"
-    shift # past argument
-    ;;
-
+        ARCHITECTURE="X86"
+        shift # past argument
+        ;;
     -h|--help)
-    # echo "Usage: $0 [-r|--resume]"
-    # echo "-r|--resume       Resumes execution if stopped earlier. TODO: Adjust behavior to current design."
-    # exit 0
-    echo "Usage: Put your apks to test into the same directory as this script."
-    echo "Optional: Specify architecture with -A (ARM) or -X (x86)."
-    exit 0
-    ;;
+        usage
+        ;;
     *)
-            # unknown option
-    ;;
+        # unknown option
+        ;;
 esac
 shift # past argument or value
 done
 
 # Install Busybox,
 # as some `su` implementations do not support `test`
+info "Installing busybox"
 if [[ -z $ARCHITECTURE ]]; then     # If $ARCHITECTURE is not set, then determine automatically
     mkdir -p /tmp/AppFuzzer/
     fileinfo=`adb pull /system/lib/libc.so /tmp/AppFuzzer/libc.so && file /tmp/AppFuzzer/libc.so`
@@ -127,16 +152,14 @@ if [[ -z $ARCHITECTURE ]]; then     # If $ARCHITECTURE is not set, then determin
         # It's an Intel arch
         adb push busybox/busybox-i686 /data/local/tmp/busybox
     else
-        echo "Could not determine architecture! Please add the command line parameter -A if you use an ARM architecture or -X if you use a x86 architecture."
-        exit 1
+        err "Could not determine architecture! Please add the command line parameter -A if you use an ARM architecture or -X if you use a x86 architecture."
     fi
 elif [[ $ARCHITECTURE -eq "ARM" ]]; then
     adb push busybox/busybox-armv6l /data/local/tmp/busybox
 elif [[ $ARCHITECTURE -eq "X86" ]]; then
     adb push busybox/busybox-i686 /data/local/tmp/busybox
 else
-    echo "Bad ARCHITECTURE, it is $ARCHITECTURE."
-    exit 1
+    err "Bad ARCHITECTURE, it is $ARCHITECTURE."
 fi
 
 
@@ -146,7 +169,7 @@ ADB_SH_BB="$ADB_SH /data/local/tmp/busybox"
 # Get the launcher package name
 if [[ -z $launcher_package_name ]]; then
     launcher_package_name=`$ADB_SH pm list packages | grep launcher | cut -d ":" -f 2 | sed 's/\r//g'` # sed removes the carriage return
-    echo "launcher_package_name is now ${launcher_package_name}."
+    info "launcher_package_name is now ${launcher_package_name}."
 fi
 
 # some internal variables
@@ -169,14 +192,14 @@ if [[ $RESET_STORAGE -eq 1 ]]; then
     res_sdcardDir=$($ADB_SH_BB "test -d /storage/emulated/0/; echo \$?" | sed 's/\r//g')
     if [[ $res_sdcardDir -eq 0 ]]; then
         sdcardDir="/storage/emulated/0/"
-        echo "SD card dir found! It is $sdcardDir."
+        info "SD card dir found: $sdcardDir"
     else
         res_sdcardDir=$($ADB_SH_BB "test -d /storage/emulated/legacy/; echo \$?" | sed 's/\r//g')
         if [[ $res_sdcardDir -eq 0 ]]; then
             sdcardDir="/storage/emulated/legacy/"
-            echo "SD card dir found! It is $sdcardDir."
+            info "SD card dir found! It is $sdcardDir."
         else
-            echo "Could not determine SD card directory! Emptying the SD card between runs will be disabled."
+            warn "Could not determine SD card directory! Emptying the SD card between runs will be disabled."
         fi
     fi
 fi
@@ -186,19 +209,19 @@ mkdir -p results
 mkdir -p logs
 
 if [[ $RESUME -eq 1 ]]; then
-    echo "Resuming execution."
+    info "Resuming execution."
     successful=`cat results/successful`
     successful_crash=`cat results/successful_crash`
     failed_to_install=`cat results/failed_to_install`
     failed_to_start=`cat results/failed_to_start`
     failed_timeout=`cat results/failed_timeout`
     total=`cat results/total`
-    echo "Total apps:                   $total"
-    echo "Successful apps:              $successful"
-    echo "Successful, but crashed apps: $successful_crash"
-    echo "Failed at install apps:       $failed_to_install"
-    echo "Failed at runtime apps:       $failed_to_start"
-    echo "Failed due to timeout apps:   $failed_timeout"
+    info "Total apps:                   $total"
+    info "Successful apps:              $successful"
+    info "Successful, but crashed apps: $successful_crash"
+    info "Failed at install apps:       $failed_to_install"
+    info "Failed at runtime apps:       $failed_to_start"
+    info "Failed due to timeout apps:   $failed_timeout"
 else
     # Initialize files
     echo "" > logs/packagelist_successful
@@ -219,11 +242,15 @@ ${ADB_SH_BB} "rm -rf ${appfuzzer_basedir}*"
 ${ADB_SH_BB} "rm -rf ${appfuzzer_basedir}.*"
 #${ADB_SH_BB} "chmod 777 -R ${appfuzzer_basedir}"
 
-for apk in *.apk; do
+for apk in ${APK_DIR}/*.apk;
+do
     package_name=`aapt dump badging "$apk" | grep "package: name" | cut -d"'" -f 2` || true
     dir_package_name_done="${appfuzzer_basedir}${package_name}.done"
     dir_package_name_failed="${appfuzzer_basedir}${package_name}.failed"
-    if [[ DEBUG -eq 1 ]]; then echo "Packagename: $package_name"; fi
+    if [[ DEBUG -eq 1 ]];
+    then
+        info "Packagename: $package_name";
+    fi
 
     if [[ $RESUME -eq 1 ]]; then
         echo "Checking if $apk was processed already …"
@@ -385,7 +412,7 @@ for apk in *.apk; do
 
     # Reset sd card
     if [[ -n $sdcardDir ]]; then
-        echo "Resetting SD card."
+        info "Resetting SD card."
         $ADB_SH "rm -rf $sdcardDir/*" || true
     fi
 
