@@ -41,6 +41,7 @@ ADB_SH="adb shell su root"
 APK_DIR=${APK_DIR:-apks}
 DEBUG=${DEBUG:-0}
 ANDROID_HOME=${ANDROID_HOME:-/opt/Android/Sdk}
+TRACE_BINDER=${TRACE_BINDER:-0}
 
 export ANDROID_HOME
 
@@ -290,7 +291,17 @@ do
         fi
     fi
 
+    # Enable Binder tracing
+    if [ "x0" != "x${TRACE_BINDER}" ];
+    then
+        debug "Resetting binder trace"
+        ${ADB_SH} "echo > /sys/kernel/debug/tracing/set_event"
+        ${ADB_SH} "echo 1 > /sys/kernel/debug/tracing/events/binder/enable"
+        ${ADB_SH} "echo 1 > /sys/kernel/debug/tracing/events/binder/tracing_on"
+    fi
+
     info " ... Fuzzing ${package_name} (${max_reps} steps, ${max_sets} tests)..."
+
     ${ADB_SH} "am start -n \"${appfuzzer_packagename}/${appfuzzer_packagename}.$MAIN_ACTIVITY\" \
     -a android.intent.action.MAIN \
     -c android.intent.category.LAUNCHER \
@@ -308,6 +319,13 @@ do
     --ef scroll_chance $scroll_chance \
     --ef OAuth_search_chance $OAuth_search_chance \
     --ef backbutton_press_chance $backbutton_press_chance" > /dev/null
+
+    # Stop Binder tracing
+    if [ "x0" != "x${TRACE_BINDER}" ];
+    then
+        debug "Stopping binder trace"
+        ${ADB_SH} "echo 0 > /sys/kernel/debug/tracing/events/binder/tracing_on"
+    fi
 
     counter=0
     result=0
@@ -382,6 +400,13 @@ do
             ${ADB_SH} rm -f ${appfuzzer_basedir}${package_name}${i}_logcat || true
         done
         debug "Logs pulled to logs/"
+    fi
+
+    # Write binder trace
+    if [ "x0" != "x${TRACE_BINDER}" ];
+    then
+        debug "Storing binder logs"
+        ${ADB_SH} "cat /sys/kernel/debug/tracing/trace" > logs/${package_name}${i}.binder
     fi
 
     mkdir -p logs/processed_packages
