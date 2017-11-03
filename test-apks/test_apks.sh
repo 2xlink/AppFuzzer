@@ -145,7 +145,7 @@ done
 
 # Install Busybox,
 # as some `su` implementations do not support `test`
-info "Installing busybox"
+debug "Installing busybox"
 if [[ -z $ARCHITECTURE ]]; then     # If $ARCHITECTURE is not set, then determine automatically
     mkdir -p /tmp/AppFuzzer/
     fileinfo=`adb pull /system/lib/libc.so /tmp/AppFuzzer/libc.so && file /tmp/AppFuzzer/libc.so`
@@ -247,8 +247,12 @@ ${ADB_SH_BB} "rm -rf ${appfuzzer_basedir}.*"
 #${ADB_SH_BB} "chmod 777 -R ${appfuzzer_basedir}"
 
 
+APKS=${APK_DIR}/*.apk
+NO_APKS=$(echo ${APKS} | wc -w)
 
-for apk in ${APK_DIR}/*.apk;
+info "Fuzzing ${NO_APKS} APKs"
+
+for apk in ${APKS};
 do
     package_name=`aapt dump badging "$apk" | grep "package: name" | cut -d"'" -f 2` || true
     dir_package_name_done="${appfuzzer_basedir}${package_name}.done"
@@ -420,7 +424,7 @@ do
     fi
 
     total=$((total + 1))
-    info "Total=$total, success=$successful, crashed=$successful_crash, inst_fail=$failed_to_install, run_fail=$failed_to_start, timeout=$failed_timeout"
+    info "total=${NO_APKS}, fuzzed=$total, success=$successful, crashed=$successful_crash, inst_fail=$failed_to_install, run_fail=$failed_to_start, timeout=$failed_timeout"
 
     echo $total > results/total
     echo $successful > results/successful
