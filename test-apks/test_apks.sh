@@ -43,12 +43,26 @@ DEBUG=${DEBUG:-0}
 ANDROID_HOME=${ANDROID_HOME:-/opt/Android/Sdk}
 TRACE_BINDER=${TRACE_BINDER:-0}
 
+# Possible launchers
+LAUNCHERS="launcher com.cyanogenmod.trebuchet"
+
 export ANDROID_HOME
 
 if [ ! -d "${APK_DIR}" ];
 then
     err "APK_DIR (${APK_DIR}) does not exist"
 fi
+
+# prefix all arguments with -e for passing multiple expressions to grep
+e_prefix()
+{
+    RESULT=""
+    for arg in $*;
+    do
+        RESULT="${RESULT} -e ${arg}"
+    done
+    echo "${RESULT}"
+}
 
 now()
 {
@@ -173,7 +187,7 @@ ADB_SH_BB="$ADB_SH /data/local/tmp/busybox"
 
 # Get the launcher package name
 if [[ -z $launcher_package_name ]]; then
-    launcher_package_name=`$ADB_SH pm list packages | grep launcher | cut -d ":" -f 2 | sed 's/\r//g'` # sed removes the carriage return
+    launcher_package_name=`$ADB_SH pm list packages | grep $(e_prefix ${LAUNCHERS}) | cut -d ":" -f 2 | xargs` # xargs removes the carriage return
     debug "launcher_package_name: ${launcher_package_name}."
 fi
 
