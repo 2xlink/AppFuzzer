@@ -550,11 +550,15 @@ public class EventInjector {
             dumper.addAction(action);
             dumper.writeEvent();
 
+            MyAccessibilityService.maybeKillPackage(safeCharSeqToString(node.getPackageName()));
+
             as.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
             return true;
         }
         return false;
     }
+
+
 
     /**
      * <p>Calls {@link EventInjector#isSpecialCase(AccessibilityNodeInfo)},

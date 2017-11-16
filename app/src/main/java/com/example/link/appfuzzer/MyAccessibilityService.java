@@ -16,6 +16,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -303,5 +305,32 @@ public class MyAccessibilityService extends AccessibilityService {
         Log.d(LOGTAG, "***** onServiceConnected");
         isRunning = true;
         launchApp();
+    }
+
+    protected static void maybeKillPackage(String packageName) {
+        Set<String> blackList = new HashSet<>();
+        blackList.add("com.google.android.gm");
+        blackList.add("com.android.chrome");
+        blackList.add("com.google.android.apps.messaging");
+        if (blackList.contains(packageName)) {
+            Log.d(LOGTAG, "Trying to kill package due to blacklist: " + packageName);
+            if (Configuration.getRoot()) {
+                try {
+                    Runtime runtime = Runtime.getRuntime();
+                    String[] cmdline = { "su", "root", "am", "force-stop", packageName};
+                    Process p = runtime.exec(cmdline);
+                    p.waitFor();
+                    if (p.exitValue() == 0) {
+                        Log.d(LOGTAG, "Killed " + packageName);
+                    } else {
+                        Log.w(LOGTAG, "Could not kill " + packageName);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else {
+                Log.w(LOGTAG, "Could not kill " + packageName + ", as root is not available.");
+            }
+        }
     }
 }
